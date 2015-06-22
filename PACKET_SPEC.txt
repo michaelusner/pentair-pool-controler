@@ -1,0 +1,331 @@
+WHEN:	September 2009
+WHO:	michael.russe@cox.net
+WHAT:	Controlling an IntelliFlow VS pump sans Pentair controller.
+
+WHY:	I bought an IntelliFlow VS pump for my pool in 2007 and was surprised
+        to learn that I had to get a Pentair Controller to use most of its
+        advanced features. Granted, you can run it like a 'regular pump' by
+        switching power ON/OFF and get the benefit of a variable speed pump that
+        can regulate its flow, but you are stuck with a manual setting of the
+        flow rate on the pump.
+        Talking to Pentair, I was told out that the protocol on the RS485 bus
+        is proprietary and therefore there is no documentation available to
+        anybody.
+        The most cost effective Pentair solution to this problem is the Pentair
+        IntelliCom* controller, that will 'talk' to the pump in response to
+        activation of one of 4 inputs if the pump is in the 'right' mode. It is
+        still a $385 list solution with the only benefit being able to run
+        4 different 'Ext.Ctrl' programs on a VS or to select one of the 4 speeds
+        of a 4x160. This is, at least in my book, not good enough to justify the
+        investment, so I put this project on the shelf until I had some more
+        time to deal with this shortcoming.
+        Early 2009 research on the Internet surfaced that the hardware protocol
+        is 9600N81 and that this bus is quite active once a Pentair controller
+        is on it, which explained why one does not see any activity if one
+        looks for data in a system with just 'the pump'. It turns out the pump
+        is quite communicative once you know how to ask it for information. In
+        addition to that it will take instructions on what to do!
+        Called Pentair again, they had not changed their position on sharing
+        the protocol, this time around I was told some mambo about safety ...
+        so I decided to figure out what is so special about it, that they will
+        not share this information.
+
+HOW:	I wrote a collection of small programs on a Linux system that put me
+	into the position to monitor and log bus traffic on a life Pentair bus
+	with a controller that is running the show. All one needs is a cheap
+	RS485 adapter hooked up to a serial port of a computer. Friends chimed
+	in and sent me lots of raw data from their systems for analysis.
+
+HOWTO:	This collection comes with a Makefile and all the sources. A 'make'
+	does compile all programs in the current directory on a Linux 2.6.21.5
+	with make 3.81 and gcc 3.4.1. There are NO errors or warnings!
+	(FYI: on my system 'vi' is setup with 'ts=8 sw=8')
+	It helps to be fluent in 'C' and Linux to understand and modify the
+	programs. Due to portability and demonstration purposes all programs
+	are single threaded and use the 'select' system call to do multi point
+	I/O and timeouts.
+	An understanding of sockets helps, but is not really necessary. The
+	important thing is that a SOCK_DGRAM socket in Linux never returns
+	an incomplete packet on a read() call as long as the packets are small.
+	This is not true for the <tty> interface, since it is byte oriented
+	and does not do packages without a defined end of package indicator,
+	which does not exist in this application.
+
+
+APRS485 access point to RS485 network
+=====================================
+
+NAME	aprs485 - RS485 access point
+USAGE	aprs485 [-<options>] <bus>
+INFO	All programs in this collection use the servives of this access point
+	server to communicate with the RS485 half-duplex bus. The access point
+	uses datagrams for communication. It provides the ability for multiple
+	programs to share the physical RS485 bus. Programs connect to 'tabs'
+	in the access point server. All 'tabs' receive data occurring on the
+	bus and may send data to the bus.
+
+	<bus>	can be either a <tty> like '/dev/ttyS4' with a RS485 adapter or
+		an IP address of a tunnel device port. A tunnel device could be
+		the TCP port of a wireless communication endpoint.
+
+	options:
+
+	-d	Debug mode, aprs485 will not go into the background and print
+		all activity of the access point with a timestamp.
+		Hit <Escape> to terminate the program.
+
+	-p <#>	Use alternate portnumber <#> as server port (default is 10485).
+		This comes in handy if you need to run two or more instances of
+		'aprs485' on the same computer.
+
+	-l <dir> Creates log files in directory <dir>. The filenames used are
+		constructed from the current date on the machine: 'YYMMDD.log'.
+		Files are appended to and created if they don't exist. The log
+		file records are ASCII, 1 record per line. They start with the
+		date followed by a timestamp, a single character record type,
+		a size field and the message. Most messages are a hexadecimal
+		representation of data on the bus.
+
+API	'aprs485.h' contains code to support 'easy' attachment to a tab.
+	#define APRS485_API 1
+	#include "aprs485.h"
+	int main(int ac, char **av)
+	{
+		int	bd, n;
+		char	msg[128];
+
+		if ((bd = hub_at(0,0)) < 0) return -1;
+		n = read(bd,msg,sizeof(msg)); /* would be a receive */
+		if (0) write(bd,"hello",5); /* would be a send */
+		hub_dt(bd);
+		return 0;
+	}
+
+
+The protocol
+============
+
+	The protocol uses short binary packages for information exchange. The
+	packages have variable size. The minimum length is 8 bytes and the
+	theoretical maximum is 6+256+2=264 bytes. The largest I have seen on
+	a live Pentair bus is 37 bytes.
+	The format is:
+
+	<ldb> <sub> <dst> <src> <cfi> <len> [<data>] <ckh> <ckl>
+
+	10 <lpb> - leading packet byte, 0xa5
+	11 <sub> - ?
+	12 <dst> - destination address
+	13 <src> - source address
+	14 <cfi> - command/function/instruction
+	15 <len> - size of data field (may be 0!)
+	16 <data ...>
+	<ckh> - most significant byte of checksum
+	<ckl> - least significant byte of checksum
+
+	The checksum is a 16 bit unsigned sum of all bytes in the message up to
+	the checksum field.
+	Most packages are preceded by a preamble of 1 or more 0xff bytes and a
+	0x00 0xff sequence.
+
+	Every device on the bus has an address:
+	0x0f - is the broadcast address, it is used by the more sophisticated
+	       controllers as <dst> in their system status broadcasts most
+	       likely to keep queries for system status low.
+	0x1x - main controllers (IntelliComII, IntelliTouch, EasyTouch ...)
+	0x2x - remote controllers
+	0x6x - pumps, 0x60 is pump 1
+
+	Apart from unsolicited broadcasts, information exchange is done by
+	a device A sending a message to device B and device B sending an answer
+	to device A. Messages for simple exchanges only differ in the fact
+	that <dst> and <src> are swapped.
+	For example:
+		C: A5 00 60 10 04 01 ff 02 19
+		P: A5 00 10 60 04 01 ff 02 19
+	is a request from the controller to the pump to turn panel control off,
+	which enables it to send other commands to the pump. The pump confirms
+	the action in the answer.
+	The following sequence will turn panel control back on:
+		C: A5 00 60 10 04 01 00 01 1A
+		P: A5 00 10 60 04 01 00 01 1A
+
+	The interpretation of a <cfi> depends on the destination of a message,
+	meaning a <cfi> for one device might mean something else for another.
+
+	And there are exceptions to this protocol. The IntelliChlor C40 puts
+	messages on the bus that start with a 0x10 0x02 sequence, a data field,
+	a single byte checksum and a 0x10 0x03 trailer sequence... The checksum
+	is the unsigned sum over the data field + 18.
+
+	There are many <cfi>s I have seen in data dumps, the interpretation of
+	the datafield is somewhat cumbersome without knowing the system, so my
+	focus is more on messages to and from a pump.
+	However, here are some basics I found:
+	A <cfi> to a controller seems to work like this:
+	bits   <76543210>
+		00xxxxxx - ?
+		01xxxxxx - ?
+		10xxxxxx - transfer(write) <cfi>&0x3f to controller
+		           controller acknowledges the write with <0x01><0x01><cfi>
+		11xxxxxx - request <cfi>&0x3f from controller
+		           the controller broadcasts it in response
+
+	My pump is an IntelliFlow VS, it does follow instructions from an
+	IntelliComII controller, provided the external programs are setup and
+	enabled. It has to be in FILTER mode AND Started to make it go.
+	Unlike other controllers, which take over full control of the pump, the
+	IntelliComII grabs control only for a short interval of time, every 30
+	seconds, to communicate what external program to run. If all inputs are
+	off it does not even do that after it has had a respone from the pump.
+
+	The sequence for input 1 active is:
+
+		C: A500 d=60 s=10 c=04 l=01 FF       <0219> SETCTRL remote
+		P: A500 d=10 s=60 c=04 l=01 FF       <0219> CTRL is remote
+	*	C: A500 d=60 s=10 c=01 l=04 03210008 <0146> WRITE (0x0008) to 0x0321
+		P: A500 d=10 s=60 c=01 l=02 0008     <0120> VALIS (0x0008)
+		C: A500 d=60 s=10 c=04 l=01 00       <011A> SETCTRL local
+		P: A500 d=10 s=60 c=04 l=01 00       <011A> CTRL is local
+
+	*       C: A500 d=60 s=10 c=01 l=04 03210000 <013E> is a stop
+	*	C: A500 d=60 s=10 c=01 l=04 03210010 <014E> is program 2
+	*	C: A500 d=60 s=10 c=01 l=04 03210018 <0156> is program 3
+	*	C: A500 d=60 s=10 c=01 l=04 03210020 <015E> is program 4
+
+	If one quits repeating the sequence for about a minute the pump stops.
+	The IntelliComII is not aware of the status of the pump and will keep
+	repeating the sequence as long as an input is active. You can stop and
+	start the pump with the START/STOP button on the control panel anytime,
+	unless, of course, you hit the period when it is in remote control.
+
+	More decoding of binary data from an IntelliTouch controlled system
+	with a VS pump surfaced that there is a status report from the pump.
+	It is only obtainable when the pump is in remote control.
+
+		C: A500 d=60 s=10 c=07 l=00 <011C> SEND status
+		P: A500 d=10 s=60 c=07 l=0f 0A0602024A08AC120000000A000F22 <028A>
+        		RUN 0a   Started
+			MOD 06   Feature 1
+			PMP 02   ? drive state
+			PWR 024a  586 WATT
+			RPM 08ac 2220 RPM
+			GPM 12     18 GPM
+			PPC 00      0 %
+			b09 00   ? 
+			ERR 00   ok
+			b11 0a   ? 
+			TMR 00   0 MIN
+			CLK 0f22 15:34
+
+	The above sequence is embedded within the cyclic exchange of data
+	between the controller and the pump. The full cyclic sequence is:
+
+		C: A500 d=60 s=10 c=04 l=01 FF       <0219> SETCTRL remote
+		P: A500 d=10 s=60 c=04 l=01 FF       <0219> CTRL is remote
+		C: A500 d=60 s=10 c=01 l=04 02E40012 <0212> WRITE (18) to 0x02e4
+		P: A500 d=10 s=60 c=01 l=02 0012 <012A>     VALIS (18)
+		C: A500 d=60 s=10 c=05 l=01 06       <0121> SETMOD 06 (Feature 1)
+		P: A500 d=10 s=60 c=05 l=01 06       <0121> MOD is 06
+		C: A500 d=60 s=10 c=06 l=01 0A       <0126> SETRUN 0a Started
+		P: A500 d=10 s=60 c=06 l=01 0A       <0126> RUN is 0a Started
+		C: A500 d=60 s=10 c=07 l=00          <011C> SEND status
+		P: A500 d=10 s=60 c=07 l=0f 0A0602024908B1120000000A000F22 <028E>
+
+	The controller never releases the pump as long as it is in AUTO mode.
+	The display on the pump shows "Display not active..." and the LEDs
+	above FEATURE 1 and START/STOP are on. Experiments with my pump showed
+	that one can change the GPM setpoint 0x02e4 on the fly, it follows it!
+	If the controller releases the pump the cyclic sequence changes to:
+
+		C: A500 d=60 s=10 c=04 l=01 00 <011A> SETCTRL local
+		P: A500 d=10 s=60 c=04 l=01 00 <011A> CTRL is local
+
+	It is important for any serious controller implementation to know when a
+	pump runs into trouble and the Pentair IntelliFlow VS is fully capable
+	of doing that!
+
+
+Data decoder
+============
+
+NAME	padec - pabus data decoder
+USAGE	padec [-<options>] <datafile>
+INFO	Offline binary <datafile> decoder. Prints to standard output.
+	The <datafile> may be a raw dump of traffic from a Pentair
+	RS485 bus or the <logfile> of 'palog'.
+	Options (default is to 'skip it' if not set):
+	-d	decode messages
+	-s	print preamble bytes (if you really care)
+	-a	print record positions in <datafile>
+	-f <#>	print only messages from/to address <#>
+	-r	print full decode of repeated messages
+	-h	print 'palog' records
+	-t	print timestamps, only useful if data is from 'palog'
+
+
+Should you decide to experiment with the programs below ...
+
+	  	!BE WARE YOU ARE ON YOUR OWN!
+	  !! THE FOLLOWING PROGRAMS PUT DATA ON THE BUS !!
+  ! DO NOT USE THIS IF YOU ALREADY HAVE A CONTROLLER IN YOUR SYSTEM !
+  ! MAKE SURE YOU CAN KILL POWER TO THE PUMP BY A HW SWITCH ANYTIME !
+
+You will need the HW switch in case things get out of control!
+Especially when you start messing with the code and work on a live system.
+
+
+Simulator Program
+=================
+
+NAME	iFlow - IntelliFlow simulator on pabus
+USAGE	iFlow [<ap>]
+INFO	Attaches to an 'aprs485' tab and emulates bus behavior of an IntelliFlow
+	pump. This program can be used to test controller software before you
+	let it go for the real thing. It is not a full implementation, but has
+	enough to get the basic bugs out of controller programs, and then, one
+	can always add to it...
+	Program exits if you type 'q' followed by a <Return> or it receives an
+	EOT from the hub.
+
+
+Simple Controller programs
+==========================
+
+The programs in this section will exit if they detect traffic on the bus.
+
+NAME	iComII - IntelliComII emulator on pabus
+USAGE	iComII [<ap>]
+INFO	Interactive program, attaches to access point tab and emulates behavior
+	of an IntelliComII controller. It has an 'extra' feature which gives
+	you, the user, the ability to pull status from the pump. The pump will
+	will follow your commands, if the external programs are setup AND
+	it is in FILTER mode AND the START/STOP light is on.
+	The commands are:
+	q - quit
+	s - pump status
+	0 - all inputs off
+	1 - input 1 active
+	2 - input 2 active
+	3 - input 3 active
+	4 - input 4 active
+	The prompt displays the version number of the program, the count down
+	timer for the next cyclic transmission and the currently active program
+	sent to the pump.
+	Program exits if you enter the 'quit' command or it receives an EOT
+	from the hub.
+
+
+NAME	iPump - IntelliFlow controller
+USAGE	iPump [<ap>]
+INFO	Experimental interactive controller program.
+	Program exits if you enter the 'quit' command or it receives an EOT
+	from the hub.
+
+
+NAME	iPmon - IntelliFlow pump status monitor
+USAGE	iPmon [<ap>]
+INFO	Attaches to access point tab and polls pump status every 15 seconds.
+	Program exits if you enter the 'quit' command or it receives an EOT
+	from the hub.
+
