@@ -1,7 +1,9 @@
+from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from time import sleep
+from urlparse import urlparse, parse_qs
 import datetime
+import threading
 
-from docutils.parsers.rst import states
 import serial
 
 
@@ -48,9 +50,23 @@ class PentairCom(object):
         SPILLWAY = 8
         AUX = 9
 
+    FeatureName = {
+        'spa': Feature.SPA,
+        'cleaner': Feature.CLEANER,
+        'air_blower': Feature.AIR_BLOWER,
+        'spa_light': Feature.SPA_LIGHT,
+        'pool_light': Feature.POOL_LIGHT,
+        'water_feature': Feature.WATER_FEATURE,
+        'spillway': Feature.SPILLWAY,
+        'aux': Feature.AUX
+    }
+
     def __init__(self, com):
         self.com = com
         self.port = serial.Serial(com, 9600)
+        self.read_thread = threading.Thread(target=self.get_broadcast_status)
+        self.status = {}
+        self.read_thread.start()
 
     def __del__(self):
         self.port.close()
@@ -80,10 +96,15 @@ class PentairCom(object):
         print "Sending {0}".format(header + packet)
         self.port.write(header + packet)
 
-    def read_status(self):
+    def read_status(self, controller):
+        ret = ""
         packet = []
-        while len(packet) == 0:
+        status = {}
+        done = False
+        while not done:
             packet = self.get_packet()
+            if len(packet) > 3 and (controller == None or packet[2] == self.Ctrl.BROADCAST):
+                done = True
         dst = packet[2]
         if dst in self.Controller:
             dst_controller = self.Controller[dst]
@@ -95,38 +116,141 @@ class PentairCom(object):
         else:
             src_controller = src
         data_length = packet[5]
-        if data_length > 1:
-            print "Source:        {0}".format(src_controller)
-            print "Destination:   {0}".format(dst_controller)
-            print packet
-            print
-            if src == self.Ctrl.MAIN and dst == self.Ctrl.BROADCAST:
-                equip1 = "{0:08b}".format(packet[self.Equip1])
-                equip2 = "{0:08b}".format(packet[self.Equip2])
-                # print "Source:        {0}".format(src_controller)
-                # print "Destination:   {0}".format(dst_controller)
-                print "Time:          {0:02d}:{1:02d}".format(packet[self.Hour], packet[self.Minute])
-                print "Pool:          {0}".format(bool_to_status(equip1[2:3]))
-                print "Spa:           {0}".format(bool_to_status(equip1[7:8]))
-                print "Air Blower:    {0}".format(bool_to_status(equip1[5:6]))
-                print "Pool Light:    {0}".format(bool_to_status(equip1[3:4]))
-                print "Spa Light:     {0}".format(bool_to_status(equip1[4:5]))
-                print "Cleaner:       {0}".format(bool_to_status(equip1[6:7]))
-                print "Water Feature: {0}".format(bool_to_status(equip1[1:2]))
-                print "Aux:           {0}".format(bool_to_status(equip2[7:8]))
-                if len(packet) >= self.WaterTemp:
-                    print "Water Temp:    {0}".format(packet[self.WaterTemp])
-                if len(packet) >= self.AirTemp:
-                    print "Air Temp:      {0}".format(packet[self.AirTemp])
-                print
+        if data_length > 8:
+            equip1 = "{0:08b}".format(packet[self.Equip1])
+            equip2 = "{0:08b}".format(packet[self.Equip2])
+            # print packet
+            # print equip1
+            # print equip2
+            status['last_update'] = datetime.datetime.now()
+            status['source'] = src_controller
+            status['destination'] = dst_controller
+            status['time'] = "{0:02d}:{1:02d}".format(packet[6], packet[7])
+            status['spillway'] = bool(int(equip1[0:1]))
+            status['pool'] = bool(int(equip1[2:3]))
+            status['spa'] = bool(int(equip1[7:8]))
+            status['blower'] = bool(int(equip1[5:6]))
+            status['pool_light'] = bool(int(equip1[3:4]))
+            status['spa_light'] = bool(int(equip1[4:5]))
+            status['cleaner'] = bool(int(equip1[6:7]))
+            status['water_feature'] = bool(int(equip1[1:2]))
+            status['aux'] = bool(int(equip2[7:8]))
+            if len(packet) >= self.WaterTemp:
+                status['water_temp'] = int(packet[self.WaterTemp])
+            if len(packet) >= self.AirTemp:
+                status['air_temp'] = int(packet[self.AirTemp])
+        return status
+
+    def get_broadcast_status(self):
+        "Read broadcast thread is running"
+        while True:
+            self.status = self.read_status(self.Ctrl.BROADCAST)
+
+
+class myHandler(BaseHTTPRequestHandler):
+    pentair = PentairCom('com6')
+    # Handler for the GET requests
+
+    def get_toggle_switch(self, title, name, value):
+        return """<tr><td valign="center"><label for="{1}">{0}</label></td>
+                    <td valign="center">
+                        <input type="checkbox" data-role="flipswitch" data-mini="true" name="{1}" id="{1}" {2}>
+                    </td>
+                </tr>
+        """.format(title, name, "checked" if value else "",
+                   "checked" if not value else "")
+
+    def do_GET(self):
+        params = parse_qs(urlparse(self.path).query)
+        if len(params) != 0:
+            for param in params:
+                self.pentair.send_command(self.pentair.FeatureName[param], True if params[param][0] == 'true' else False)
+                sleep(2)
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        status = self.pentair.status
+        status_table = """
+            <h4>Air: {2}&deg; Water: {1}&deg;
+            </h4>""".format(status['time'] if 'time' in status else 'None',
+                            status['water_temp'] if 'water_temp' in status else 'None',
+                            status['air_temp'] if 'air_temp' in status else 'None')
+
+        status_table += "<table>"
+        if 'pool' in status:
+            status_table += self.get_toggle_switch("Pool", 'pool', status['pool'])
+        if 'spa' in status:
+            status_table += self.get_toggle_switch("Spa", 'spa', status['spa'])
+        if 'cleaner' in status:
+            status_table += self.get_toggle_switch("Cleaner", 'cleaner', status['cleaner'])
+        if 'blower' in status:
+            status_table += self.get_toggle_switch("Air Blower", 'blower', status['blower'])
+        if 'spa_light' in status:
+            status_table += self.get_toggle_switch("Spa Light", 'spa_light', status['spa_light'])
+        if 'pool_light' in status:
+            status_table += self.get_toggle_switch("Pool Light", 'pool_light', status['pool_light'])
+        if 'water_feature' in status:
+            status_table += self.get_toggle_switch("Water Feature", 'water_feature', status['water_feature'])
+        if 'spillway' in status:
+            status_table += self.get_toggle_switch("Spillway", 'spillway', status['spillway'])
+        if 'aux' in status:
+            status_table += self.get_toggle_switch("Aux", 'aux', status['aux'])
+
+        status_table += "</table>"
+        body = """<html>
+<head>
+    <title>My Page</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css">
+    <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+    <script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>>
+    <style>
+        table {{
+            border-collapse: collapse;
+        }}
+
+        table, td, th {{
+            border: 1px solid black;
+            padding: 5px;
+        }}
+    </style>
+    <script>
+
+  $( document ).ready(function() {{
+    $("input[type='checkbox']").bind( "change", function(event, ui) {{
+          window.location.replace("http://192.168.1.2/?" + this.name + "=" + this.checked);
+    }});
+    setTimeout("window.location.replace('http://192.168.1.2');", 5000);
+  }});
+
+  </script>
+</head>
+<body>
+
+<div data-role="page">
+    <div data-role="content">
+        {0}
+    </div>
+</div>
+</body>
+</html>""".format(status_table)
+        self.wfile.write(body)
+
+    def log_request(self, code=None, size=None):
+        print('Request from {0}'.format(self.client_address[0]))
+
+    def log_message(self, format, *args):
+        print('Message')
+
 
 if __name__ == "__main__":
-    x = PentairCom('com6')
-    state = True
-    while True:
-        x.read_status()
-        if datetime.datetime.now().second % 5 == 0:
-            send_state = x.State.ON if state else x.State.OFF
-            x.send_command(x.Feature.POOL_LIGHT, send_state)
-            state ^= True
-        sleep(1)
+    Protocol = "HTTP/1.0"
+    port = 80
+    server_address = ('192.168.1.2', port)
+    httpd = HTTPServer(server_address, myHandler)
+    try:
+        print 'Started httpserver on port ', port
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print '^C received, shutting down the web server'
+        httpd.socket.close()
