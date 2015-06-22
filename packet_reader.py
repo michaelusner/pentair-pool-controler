@@ -4,6 +4,8 @@ import serial
 def to_int(x):
     return int(x, 16)
 
+def bool_to_status(status):
+    return "On" if int(status) else "Off"
 
 class PentairCom(object):
     Equip1 = 8
@@ -71,19 +73,19 @@ class PentairCom(object):
                     equip2 = "{0:08b}".format(packet[self.Equip2])
                     # print "Source:        {0}".format(src_controller)
                     # print "Destination:   {0}".format(dst_controller)
-                    print "Pool:          {0}".format(equip1[2:3])
-                    print "Spa:           {0}".format(equip1[7:8])
-                    print "Air Blower:    {0}".format(equip1[5:6])
-                    print "Pool Light:    {0}".format(equip1[3:4])
-                    print "Spa Light:     {0}".format(equip1[4:5])
-                    print "Cleaner:       {0}".format(equip1[6:7])
-                    print "Water Feature: {0}".format(equip1[1:2])
-                    print "Aux:           {0}".format(equip2[7:8])
+                    print "Pool:          {0}".format(bool_to_status(equip1[2:3]))
+                    print "Spa:           {0}".format(bool_to_status(equip1[7:8]))
+                    print "Air Blower:    {0}".format(bool_to_status(equip1[5:6]))
+                    print "Pool Light:    {0}".format(bool_to_status(equip1[3:4]))
+                    print "Spa Light:     {0}".format(bool_to_status(equip1[4:5]))
+                    print "Cleaner:       {0}".format(bool_to_status(equip1[6:7]))
+                    print "Water Feature: {0}".format(bool_to_status(equip1[1:2]))
+                    print "Aux:           {0}".format(bool_to_status(equip2[7:8]))
                     if len(packet) >= self.WaterTemp:
                         print "Water Temp:    {0}".format(packet[self.WaterTemp])
                     if len(packet) >= self.AirTemp:
                         print "Air Temp:      {0}".format(packet[self.AirTemp])
-
+                    print
 
 if __name__ == "__main__":
     x = PentairCom('com6')
