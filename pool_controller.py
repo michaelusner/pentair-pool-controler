@@ -14,6 +14,8 @@ def to_int(x):
 def bool_to_status(status):
     return "On" if int(status) else "Off"
 
+running = True
+
 
 class PentairCom(object):
     Equip1 = 8
@@ -46,11 +48,13 @@ class PentairCom(object):
         AIR_BLOWER = 3
         SPA_LIGHT = 4
         POOL_LIGHT = 5
+        POOL = 6
         WATER_FEATURE = 7
         SPILLWAY = 8
         AUX = 9
 
     FeatureName = {
+        'pool': Feature.POOL,
         'spa': Feature.SPA,
         'cleaner': Feature.CLEANER,
         'air_blower': Feature.AIR_BLOWER,
@@ -69,6 +73,7 @@ class PentairCom(object):
         self.read_thread.start()
 
     def __del__(self):
+        print "Closing COM port"
         self.port.close()
 
     def get_packet(self):
@@ -87,6 +92,9 @@ class PentairCom(object):
             return []
         return packet
 
+    def get_feature_name(self, feature_number):
+        return {v: k for k, v in self.FeatureName.items()}[feature_number]
+
     def send_command(self, feature, state):
         header = [0x00, 0xff]
         packet = [165, 31, self.Ctrl.MAIN, self.Ctrl.REMOTE, 134, 2, feature, 1 if state else 0]
@@ -95,6 +103,10 @@ class PentairCom(object):
         packet.append(checksum % 256)
         print "Sending {0}".format(header + packet)
         self.port.write(header + packet)
+        sleep(1)
+        if self.status[self.get_feature_name(feature)] == state:
+            return True
+        return False
 
     def read_status(self, controller):
         ret = ""
@@ -103,25 +115,31 @@ class PentairCom(object):
         done = False
         while not done:
             packet = self.get_packet()
-            if len(packet) > 3 and (controller == None or packet[2] == self.Ctrl.BROADCAST):
+            if len(packet) > 3:
+                dst = packet[2]
+                if dst in self.Controller:
+                    dst_controller = self.Controller[dst]
+                else:
+                    dst_controller = dst
+                src = packet[3]
+                if src in self.Controller:
+                    src_controller = self.Controller[src]
+                else:
+                    src_controller = src
+            print "From: {0}".format(src_controller)
+            print "To  : {0}".format(dst_controller)
+            print packet
+            print
+            if len(packet) > 3 and (controller is None or packet[2] == self.Ctrl.BROADCAST):
                 done = True
-        dst = packet[2]
-        if dst in self.Controller:
-            dst_controller = self.Controller[dst]
-        else:
-            dst_controller = dst
-        src = packet[3]
-        if src in self.Controller:
-            src_controller = self.Controller[src]
-        else:
-            src_controller = src
+
         data_length = packet[5]
         if data_length > 8:
             equip1 = "{0:08b}".format(packet[self.Equip1])
             equip2 = "{0:08b}".format(packet[self.Equip2])
-            # print packet
-            # print equip1
-            # print equip2
+            print "Equip1: {0}".format(equip1)
+            print "Equip2: {0}".format(equip2)
+            print
             status['last_update'] = datetime.datetime.now()
             status['source'] = src_controller
             status['destination'] = dst_controller
@@ -139,17 +157,18 @@ class PentairCom(object):
                 status['water_temp'] = int(packet[self.WaterTemp])
             if len(packet) >= self.AirTemp:
                 status['air_temp'] = int(packet[self.AirTemp])
+        else:
+            print
         return status
 
     def get_broadcast_status(self):
         "Read broadcast thread is running"
-        while True:
+        while running:
             self.status = self.read_status(self.Ctrl.BROADCAST)
 
 
 class myHandler(BaseHTTPRequestHandler):
     pentair = PentairCom('com6')
-    # Handler for the GET requests
 
     def get_toggle_switch(self, title, name, value):
         return """<tr><td valign="center"><label for="{1}">{0}</label></td>
@@ -162,10 +181,28 @@ class myHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         params = parse_qs(urlparse(self.path).query)
-        if len(params) != 0:
-            for param in params:
-                self.pentair.send_command(self.pentair.FeatureName[param], True if params[param][0] == 'true' else False)
-                sleep(2)
+        if self.path == '/favicon.ico':
+            self.send_response(200)
+            return
+        elif self.path == '/wait.gif':
+            self.send_response(200)
+            self.send_header('Content-type', 'image/gif')
+            self.end_headers()
+            try:
+                f = open('wait.gif', 'rb')
+                self.wfile.write(f.read())
+            except IOError:
+                self.send_error(404, 'File Not Found: {0}'.format(self.path))
+            return
+
+        elif self.path.startswith('/feature?'):
+            if len(params) != 0:
+                for param in params:
+                    if self.pentair.send_command(self.pentair.FeatureName[param], True if params[param][0] == 'true' else False):
+                        self.send_response(200)
+                    else:
+                        self.send_response(400)
+
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
@@ -213,23 +250,38 @@ class myHandler(BaseHTTPRequestHandler):
             border: 1px solid black;
             padding: 5px;
         }}
+        #overlay {{
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 250;
+            left: 100;
+            z-index: 10;
+        }}
     </style>
     <script>
 
+    function httpGet(url)
+    {{
+        $.ajax({{url: url}}).done(function() {{  }});
+    }}
   $( document ).ready(function() {{
     $("input[type='checkbox']").bind( "change", function(event, ui) {{
-          window.location.replace("http://192.168.1.2/?" + this.name + "=" + this.checked);
+        httpGet("http://192.168.1.2/feature?" + this.name + "=" + this.checked);
     }});
-    setTimeout("window.location.replace('http://192.168.1.2');", 5000);
   }});
 
   </script>
 </head>
 <body>
-
 <div data-role="page">
     <div data-role="content">
+        <!--<div id="overlay">
+            <img id='wait' src='wait.gif' style='visibility: hidden;'>
+        </div>-->
+        <div id="content">
         {0}
+        </div>
     </div>
 </div>
 </body>
@@ -252,5 +304,6 @@ if __name__ == "__main__":
         print 'Started httpserver on port ', port
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print '^C received, shutting down the web server'
+        print '^C received, shutting down monitor thread and web server'
+        running = False
         httpd.socket.close()
