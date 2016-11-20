@@ -5,7 +5,7 @@ Michael Usner
 import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify, request
-from .pool_controller import PentairCom
+from pool_controller import PentairCom
 
 flask_app = Flask(__name__)
 pool = PentairCom("/dev/ttyUSB0", logger=flask_app.logger)
@@ -25,7 +25,7 @@ def get_status():
     """ Get the pool controller status """
     flask_app.logger.info("%s: /pool/status", request.remote_addr)
     ret = jsonify(pool.get_status())
-    flask_app.logger.info("%s: Returning: {1}", request.remote_addr, ret.response)
+    flask_app.logger.info("%s: Returning: %s", request.remote_addr, ret.response)
     return no_cache(ret)
 
 
