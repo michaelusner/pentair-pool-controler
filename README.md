@@ -17,8 +17,10 @@ The service assumes your COM port is /dev/ttyUSB0 so you will need to modify thi
 depending on your system and OS.
 
 When you run the service, pool controller endpoints will be exposed:
-/pool/status
+  
+  /pool/status
   Returns all features and their statuses
+  
   Example:
     $ curl http://192.168.1.13:8080/pool/status
     Response: {
@@ -39,7 +41,7 @@ When you run the service, pool controller endpoints will be exposed:
       "water_temp": 74
     }
   
-/pool/-feature-/-state-
+  /pool/-feature-/-state-
   Set a feature to an on/off state
   Examples:
     Turn the spa on
