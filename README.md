@@ -39,7 +39,7 @@ When you run the service, pool controller endpoints will be exposed:
       "water_temp": 74
     }
   
-/pool/<feature>/<state>
+/pool/-feature-/-state-
   Set a feature to an on/off state
   Examples:
     Turn the spa on
