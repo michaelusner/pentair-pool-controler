@@ -22,6 +22,7 @@ When you run the service, pool controller endpoints will be exposed:
   Returns all features and their statuses
   
   Example:
+
     $ curl http://192.168.1.13:8080/pool/status
     Response: {
       "air_blower": "off",
@@ -40,7 +41,7 @@ When you run the service, pool controller endpoints will be exposed:
       "water_feature": "off",
       "water_temp": 74
     }
-  
+    
   /pool/-feature-/-state-
   Set a feature to an on/off state
   Examples:
