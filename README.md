@@ -42,8 +42,7 @@ When you run the service, pool controller endpoints will be exposed:
       "water_temp": 74
     }
     
-    
-  Set a feature to an on/off state
+  Set a feature to an on/off state using /pool/-feature-/-state-
   Examples:
     Turn the spa on
     $ curl http://192.168.1.13:8080/pool/spa/on
