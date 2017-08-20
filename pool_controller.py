@@ -90,7 +90,7 @@ class PentairCom(threading.Thread):
         self.logger = logger
         self.com = com
         self.port = serial.Serial(com, 9600)
-        self.status = None
+        self.status = {}
         sleep(2)
 
     def __del__(self):
@@ -99,7 +99,7 @@ class PentairCom(threading.Thread):
 
     def get_packet(self):
         """
-        This method obtains, decudes, and returns a packet read from the serial port
+        This method obtains, decodes, and returns a packet read from the serial port
         """
         header = [0, 0, 0, 0]
         while header != [255, 0, 255, 165]:
@@ -157,6 +157,7 @@ class PentairCom(threading.Thread):
         self.logger.info("Set %s to %s in %02fs", feature_name, state, duration)
         return self.status
 
+
     def read_status(self, controller):
         """
         Read the controller status
@@ -168,6 +169,7 @@ class PentairCom(threading.Thread):
         dst_controller = None
         while not done:
             packet = self.get_packet()
+            
             if len(packet) > 3:
                 dst = packet[2]
                 if dst in self.Controller:
@@ -182,6 +184,12 @@ class PentairCom(threading.Thread):
                 self.logger.debug("From: %s", src_controller)
                 self.logger.debug("To  : %s", dst_controller)
                 self.logger.debug(packet)
+
+                if src_controller == "Pump1" and packet[4] == 0x07 and len(packet) == 21:
+                    self.status["pump_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["pump_rpm"] = (packet[11] << 8) + packet[12]
+                    self.logger.info(self.status)
+
                 if len(packet) > 3 and (controller is None or packet[2] == self.Ctrl.BROADCAST):
                     done = True
 
@@ -189,35 +197,33 @@ class PentairCom(threading.Thread):
         if data_length > 8:
             equip1 = "{0:08b}".format(packet[self.Equip1])
             equip2 = "{0:08b}".format(packet[self.Equip2])
-            self.logger.debug("Equip1: %s", equip1)
-            self.logger.debug("Equip2: %s", equip2)
-            status['last_update'] = datetime.datetime.now()
-            status['source'] = src_controller
-            status['destination'] = dst_controller
-            status['time'] = "{0:02d}:{1:02d}".format(packet[6], packet[7])
-            status['spillway'] = self.state[int(equip1[0:1])]
-            status['pool'] = self.state[int(equip1[2:3])]
-            status['spa'] = self.state[int(equip1[7:8])]
-            status['air_blower'] = self.state[int(equip1[5:6])]
-            status['pool_light'] = self.state[int(equip1[3:4])]
-            status['spa_light'] = self.state[int(equip1[4:5])]
-            status['cleaner'] = self.state[int(equip1[6:7])]
-            status['water_feature'] = self.state[int(equip1[1:2])]
-            status['aux'] = self.state[int(equip2[7:8])]
+            self.status['last_update'] = datetime.datetime.now()
+            self.status['source'] = src_controller
+            self.status['destination'] = dst_controller
+            self.status['time'] = "{0:02d}:{1:02d}".format(packet[6], packet[7])
+            self.status['spillway'] = self.state[int(equip1[0:1])]
+            self.status['pool'] = self.state[int(equip1[2:3])]
+            self.status['spa'] = self.state[int(equip1[7:8])]
+            self.status['air_blower'] = self.state[int(equip1[5:6])]
+            self.status['pool_light'] = self.state[int(equip1[3:4])]
+            self.status['spa_light'] = self.state[int(equip1[4:5])]
+            self.status['cleaner'] = self.state[int(equip1[6:7])]
+            self.status['water_feature'] = self.state[int(equip1[1:2])]
+            self.status['aux'] = self.state[int(equip2[7:8])]
             if len(packet) >= self.WaterTemp:
-                status['water_temp'] = int(packet[self.WaterTemp])
+                self.status['water_temp'] = int(packet[self.WaterTemp])
             if len(packet) >= self.AirTemp:
-                status['air_temp'] = int(packet[self.AirTemp])
+                self.status['air_temp'] = int(packet[self.AirTemp])
         if not self.ready:
             self.ready = True
-        return status
+        return self.status
 
     def run(self):
         """
         The thread entry point
         """
         while True:
-            self.status = self.read_status(self.Ctrl.BROADCAST)
+            self.read_status(self.Ctrl.BROADCAST)
 
     def get_status(self):
         """

@@ -7,6 +7,9 @@ from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify, request
 from pool_controller import PentairCom
 
+
+host_ip = "0.0.0.0"
+host_port = "8080"
 flask_app = Flask(__name__)
 pool = PentairCom("/dev/ttyUSB0", logger=flask_app.logger)
 pool.start()
@@ -51,10 +54,4 @@ if __name__ == '__main__':
     handler = RotatingFileHandler('/home/musner/ha/server.log', maxBytes=10000, backupCount=1)
     handler.setLevel(logging.INFO)
     flask_app.logger.addHandler(handler)
-    flask_app.run(host='0.0.0.0', port=8080, debug=False)
-    
-    #schedule.every().day.at("00:00").do(all_off,'Shutting down pool')
-    #all_off()
-    #while True:
-    #    schedule.run_pending()
-    #    time.sleep(60)
+    flask_app.run(host=host_ip, port=host_port, debug=False)

@@ -117,11 +117,17 @@ metadata {
                 [value: 96, color: "#bc2323"]
             ])
     	}
+        valueTile("pump_watts", "device.pump_watts", width: 2, height: 1) {
+        	state("watts", label: 'Pump\n${currentValue} watts')
+        }
+        valueTile("pump_rpm", "device.pump_rpm", width: 2, height: 1) {
+        	state("rpm", label: 'Pump\n${currentValue} RPMs')
+        }
         standardTile("refresh", "command.refresh", inactiveLabel: false) {
         	state "default", label:'refresh', action:"refresh.refresh", icon:"st.secondary.refresh-icon"
     	}
         main(["water_temp"])
-		details(["pool_light", "spa_light", "air_temp", "water_temp", "pool", "spa", "air_blower", "cleaner", "water_feature", "spillway", "refresh"])
+		details(["pool_light", "spa_light", "air_temp", "water_temp", "pool", "spa", "air_blower", "cleaner", "water_feature", "spillway", "pump_watts", "pump_rpm", "refresh"])
 	}
 }
 
