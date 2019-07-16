@@ -11,7 +11,7 @@ from pool_controller import PentairCom
 host_ip = "0.0.0.0"
 host_port = "8080"
 flask_app = Flask(__name__)
-pool = PentairCom("/dev/ttyUSB0", logger=flask_app.logger)
+pool = PentairCom("/dev/ttyS0", logger=flask_app.logger)
 pool.start()
 
 
@@ -51,7 +51,7 @@ def all_off():
 
 
 if __name__ == '__main__':
-    handler = RotatingFileHandler('/home/musner/ha/server.log', maxBytes=10000, backupCount=1)
+    handler = RotatingFileHandler('/home/pi/pool/server.log', maxBytes=10000, backupCount=1)
     handler.setLevel(logging.INFO)
     flask_app.logger.addHandler(handler)
     flask_app.run(host=host_ip, port=host_port, debug=False)

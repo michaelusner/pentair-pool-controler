@@ -169,7 +169,7 @@ class PentairCom(threading.Thread):
         dst_controller = None
         while not done:
             packet = self.get_packet()
-            
+
             if len(packet) > 3:
                 dst = packet[2]
                 if dst in self.Controller:
@@ -251,7 +251,7 @@ class MyTest(unittest.TestCase):
             PentairCom.Feature.SPILLWAY,
             PentairCom.Feature.AUX
         ]
-        pool = PentairCom('/dev/ttyUSB0')
+        pool = PentairCom('/dev/ttyS0')
         pool.start()
         feature_list = [x for x in combinations(feature_list, 4)]
         shuffle(feature_list)
