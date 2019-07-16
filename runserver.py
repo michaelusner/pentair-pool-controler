@@ -52,6 +52,6 @@ def all_off():
 
 if __name__ == '__main__':
     handler = RotatingFileHandler('/home/pi/pool/server.log', maxBytes=10000, backupCount=1)
-    handler.setLevel(logging.INFO)
+    handler.setLevel(logging.DEBUG)
     flask_app.logger.addHandler(handler)
-    flask_app.run(host=host_ip, port=host_port, debug=False)
+    flask_app.run(host=host_ip, port=host_port, debug=True)

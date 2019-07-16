@@ -14,7 +14,7 @@ from itertools import combinations
 from random import shuffle, choice
 import serial
 
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -46,14 +46,22 @@ class PentairCom(threading.Thread):
     class Ctrl:
         """ Simple enum for device """
         MAIN = 0x10
+        SECONDARY = 0x11
         REMOTE = 0x20
         PUMP1 = 0x60
+        PUMP2 = 0x61
+        PUMP3 = 0x62
+        PUMP4 = 0x63
         BROADCAST = 0x0f
 
     Controller = {
         Ctrl.MAIN: "Main",
+        Ctrl.SECONDARY: "Secondary",
         Ctrl.REMOTE: "Remote",
         Ctrl.PUMP1: "Pump1",
+        Ctrl.PUMP2: "Pump2",
+        Ctrl.PUMP3: "Pump3",
+        Ctrl.PUMP4: "Pump4",
         Ctrl.BROADCAST: "Broadcast"
     }
 
@@ -181,13 +189,28 @@ class PentairCom(threading.Thread):
                     src_controller = self.Controller[src]
                 else:
                     src_controller = src
-                self.logger.debug("From: %s", src_controller)
-                self.logger.debug("To  : %s", dst_controller)
+                self.logger.debug("From: %s: %s", src_controller, src)
+                self.logger.debug("To  : %s, %s", dst_controller, dst)
                 self.logger.debug(packet)
 
                 if src_controller == "Pump1" and packet[4] == 0x07 and len(packet) == 21:
-                    self.status["pump_watts"] = (packet[9] << 8) + packet[10]
-                    self.status["pump_rpm"] = (packet[11] << 8) + packet[12]
+                    self.status["Pump1_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["pum1_rpm"] = (packet[11] << 8) + packet[12]
+                    self.logger.info(self.status)
+
+                if src_controller == "Pump2" and packet[4] == 0x07 and len(packet) == 21:
+                    self.status["pump2_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["pump2_rpm"] = (packet[11] << 8) + packet[12]
+                    self.logger.info(self.status)
+
+                if src_controller == "Pump3" and packet[4] == 0x07 and len(packet) == 21:
+                    self.status["pump3_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["pump3_rpm"] = (packet[11] << 8) + packet[12]
+                    self.logger.info(self.status)
+
+                if src_controller == "Pump4" and packet[4] == 0x07 and len(packet) == 21:
+                    self.status["pump4_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["pump4_rpm"] = (packet[11] << 8) + packet[12]
                     self.logger.info(self.status)
 
                 if len(packet) > 3 and (controller is None or packet[2] == self.Ctrl.BROADCAST):
