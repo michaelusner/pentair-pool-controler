@@ -195,109 +195,30 @@ class PentairCom(threading.Thread):
 
                 if src_controller == "Pump1" and packet[4] == 0x07 and len(packet) == 21:
                     self.status["Pump1_watts"] = (packet[9] << 8) + packet[10]
-                    self.status["pum1_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
-
-                if src_controller == "Pump2" and packet[4] == 0x07 and len(packet) == 21:
-                    self.status["pump2_watts"] = (packet[9] << 8) + packet[10]
-                    self.status["pump2_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
-
-                if src_controller == "Pump3" and packet[4] == 0x07 and len(packet) == 21:
-                    self.status["pump3_watts"] = (packet[9] << 8) + packet[10]
-                    self.status["pump3_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
-
-                if src_controller == "Pump4" and packet[4] == 0x07 and len(packet) == 21:
-                    self.status["pump4_watts"] = (packet[9] << 8) + packet[10]
-                    self.status["pump4_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
-
-                if len(packet) > 3 and (controller is None or packet[2] == self.Ctrl.BROADCAST):
-                    done = True
-
-        data_length = packet[5]
-        if data_length > 8:
-            equip1 = "{0:08b}".format(packet[self.Equip1])
-            equip2 = "{0:08b}".format(packet[self.Equip2])
-            self.logger.debug("self : %s", list(equip1))
-            self.status['last_update'] = datetime.datetime.now()
-            self.status['source'] = src_controller
-            self.status['destination'] = dst_controller
-            self.status['time'] = "{0:02d}:{1:02d}".format(packet[6], packet[7])
-            self.status['spillway'] = self.state[int(equip1[0:1])]
-            self.status['pool'] = self.state[int(equip1[2:3])]
-            self.status['spa'] = self.state[int(equip1[7:8])]
-            self.status['air_blower'] = self.state[int(equip1[5:6])]
-            self.status['pool_light'] = self.state[int(equip1[3:4])]
-            self.status['spa_light'] = self.state[int(equip1[4:5])]
-            self.status['cleaner'] = self.state[int(equip1[6:7])]
-            self.status['water_feature'] = self.state[int(equip1[1:2])]
-            self.status['aux'] = self.state[int(equip2[7:8])]
-            if len(packet) >= self.WaterTemp:
-                self.status['water_temp'] = int(packet[self.WaterTemp])
-            if len(packet) >= self.AirTemp:
-                self.status['air_temp'] = int(packet[self.AirTemp])
-        if not self.ready:
-            self.ready = True
-        return self.status
-
-
-    def read_status(self, controller):
-        """
-        Read the controller status
-        """
-        packet = []
-        status = {}
-        done = False
-        src_controller = None
-        dst_controller = None
-        while not done:
-            packet = self.get_packet()
-
-            if len(packet) > 3:
-                dst = packet[2]
-                if dst in self.Controller:
-                    dst_controller = self.Controller[dst]
-                else:
-                    dst_controller = dst
-                src = packet[3]
-                if src in self.Controller:
-                    src_controller = self.Controller[src]
-                else:
-                    src_controller = src
-                self.logger.debug("From: %s: %s", src_controller, src)
-                self.logger.debug("To  : %s, %s", dst_controller, dst)
-                self.logger.debug(packet)
-
-                if src_controller == "Pump1" and packet[4] == 0x07 and len(packet) == 21:
-                    self.status["Pump1_watts"] = (packet[9] << 8) + packet[10]
                     self.status["Pump1_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
 
                 if src_controller == "Pump2" and packet[4] == 0x07 and len(packet) == 21:
                     self.status["Pump2_watts"] = (packet[9] << 8) + packet[10]
                     self.status["Pump2_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
 
                 if src_controller == "Pump3" and packet[4] == 0x07 and len(packet) == 21:
                     self.status["Pump3_watts"] = (packet[9] << 8) + packet[10]
                     self.status["Pump3_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
 
                 if src_controller == "Pump4" and packet[4] == 0x07 and len(packet) == 21:
                     self.status["Pump4_watts"] = (packet[9] << 8) + packet[10]
                     self.status["Pump4_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
 
                 if len(packet) > 3 and (controller is None or packet[2] == self.Ctrl.BROADCAST):
                     done = True
 
         data_length = packet[5]
-        if data_length > 8:
+        # check to see if this is a status broadcase
+        if data_length > 8 and packet[4] == 0x02:
             equip1 = "{0:08b}".format(packet[self.Equip1])
             equip2 = "{0:08b}".format(packet[self.Equip2])
-            self.logger.debug("self : %s", list(equip1))
+            self.logger.debug("Equip1 : %s", list(equip1))
+            self.logger.debug("Equip2 : %s", list(equip2))
             self.status['last_update'] = datetime.datetime.now()
             self.status['source'] = src_controller
             self.status['destination'] = dst_controller
@@ -306,17 +227,21 @@ class PentairCom(threading.Thread):
             self.status['pool'] = self.state[int(equip1[2:3])]
             self.status['spa'] = self.state[int(equip1[7:8])]
             self.status['air_blower'] = self.state[int(equip1[5:6])]
-            self.status['pool_light'] = self.state[int(equip1[3:4])]
+            self.status['big_waterfall'] = self.state[int(equip1[3:4])]
             self.status['spa_light'] = self.state[int(equip1[4:5])]
-            self.status['cleaner'] = self.state[int(equip1[6:7])]
+            self.status['filter_pump2'] = self.state[int(equip1[6:7])]
             self.status['water_feature'] = self.state[int(equip1[1:2])]
-            self.status['aux'] = self.state[int(equip2[7:8])]
+            self.status['edge_cleaner'] = self.state[int(equip2[5:6])]
+            self.status['neg_edge'] = self.state[int(equip2[4:5])]
+            self.status['bar_feature'] = self.state[int(equip2[7:8])]
             if len(packet) >= self.WaterTemp:
                 self.status['water_temp'] = int(packet[self.WaterTemp])
             if len(packet) >= self.AirTemp:
                 self.status['air_temp'] = int(packet[self.AirTemp])
         if not self.ready:
             self.ready = True
+
+        self.logger.info(self.status)
         return self.status
 
     def run(self):
@@ -334,17 +259,6 @@ class PentairCom(threading.Thread):
         while not self.ready:
             sleep(0.1)
         return self.status
-
-    def get_monitor(self):
-        """
-        Get the thread status
-        """
-        self.ready = False
-        while not self.ready:
-            sleep(0.1)
-        str_monitor="Pump2_watts = {}".format(self.status["Pump2_watts"])
-        str_monitor+="\nPump2_speed = {}".format(self.status["Pump2_rpm"])
-        return str_monitor
 
 
 class MyTest(unittest.TestCase):
