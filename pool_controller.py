@@ -33,6 +33,7 @@ class PentairCom(threading.Thread):
     ready = False
     Equip1 = 8
     Equip2 = 9
+    Equip3 = 10
     WaterTemp = 20
     AirTemp = 24
     Hour = 6
@@ -45,6 +46,7 @@ class PentairCom(threading.Thread):
 
     class Ctrl:
         """ Simple enum for device """
+        CLORINATOR = 0x02
         MAIN = 0x10
         SECONDARY = 0x11
         REMOTE = 0x20
@@ -55,6 +57,7 @@ class PentairCom(threading.Thread):
         BROADCAST = 0x0f
 
     Controller = {
+        Ctrl.CLORINATOR: "Clorinator",
         Ctrl.MAIN: "Main",
         Ctrl.SECONDARY: "Secondary",
         Ctrl.REMOTE: "Remote",
@@ -192,6 +195,11 @@ class PentairCom(threading.Thread):
                 self.logger.debug("From: %s: %s", src_controller, src)
                 self.logger.debug("To  : %s, %s", dst_controller, dst)
                 self.logger.debug(packet)
+                if src_controller == "Clorinator":
+                    self.logger.debug("*DEBUG*** Found Clorinator src")
+
+                if dst_controller == "Clorinator":
+                    self.logger.debug("*DEBUG*** Found Clorinator dest")
 
                 if src_controller == "Pump1" and packet[4] == 0x07 and len(packet) == 21:
                     self.status["Pump1_watts"] = (packet[9] << 8) + packet[10]
@@ -217,23 +225,38 @@ class PentairCom(threading.Thread):
         if data_length > 8 and packet[4] == 0x02:
             equip1 = "{0:08b}".format(packet[self.Equip1])
             equip2 = "{0:08b}".format(packet[self.Equip2])
+            equip3 = "{0:08b}".format(packet[self.Equip3])
             self.logger.debug("Equip1 : %s", list(equip1))
             self.logger.debug("Equip2 : %s", list(equip2))
+            self.logger.debug("Equip3 : %s", list(equip3))
             self.status['last_update'] = datetime.datetime.now()
             self.status['source'] = src_controller
             self.status['destination'] = dst_controller
             self.status['time'] = "{0:02d}:{1:02d}".format(packet[6], packet[7])
             self.status['spillway'] = self.state[int(equip1[0:1])]
+            self.status['air_blower'] = self.state[int(equip1[1:2])]
             self.status['pool'] = self.state[int(equip1[2:3])]
-            self.status['spa'] = self.state[int(equip1[7:8])]
-            self.status['air_blower'] = self.state[int(equip1[5:6])]
             self.status['big_waterfall'] = self.state[int(equip1[3:4])]
             self.status['spa_light'] = self.state[int(equip1[4:5])]
+            self.status['pool_light'] = self.state[int(equip1[5:6])]
             self.status['filter_pump2'] = self.state[int(equip1[6:7])]
-            self.status['water_feature'] = self.state[int(equip1[1:2])]
-            self.status['edge_cleaner'] = self.state[int(equip2[5:6])]
+            self.status['spa'] = self.state[int(equip1[7:8])]
+            self.status['unknown2_0'] = self.state[int(equip2[0:1])]
+            self.status['unknown2_1'] = self.state[int(equip2[1:2])]
+            self.status['unknown2_2'] = self.state[int(equip2[2:3])]
+            self.status['unknown2_3'] = self.state[int(equip2[3:4])]
             self.status['neg_edge'] = self.state[int(equip2[4:5])]
+            self.status['edge_cleaner'] = self.state[int(equip2[5:6])]
+            self.status['unknown2_6'] = self.state[int(equip2[6:7])]
             self.status['bar_feature'] = self.state[int(equip2[7:8])]
+            self.status['unknown3_0'] = self.state[int(equip2[0:1])]
+            self.status['unknown3_1'] = self.state[int(equip2[1:2])]
+            self.status['unknown3_2'] = self.state[int(equip2[2:3])]
+            self.status['unknown3_3'] = self.state[int(equip2[3:4])]
+            self.status['unknown3_4'] = self.state[int(equip2[4:5])]
+            self.status['unknown3_5'] = self.state[int(equip2[5:6])]
+            self.status['unknown3_6'] = self.state[int(equip2[6:7])]
+            self.status['unknown3_7'] = self.state[int(equip2[7:8])]
             if len(packet) >= self.WaterTemp:
                 self.status['water_temp'] = int(packet[self.WaterTemp])
             if len(packet) >= self.AirTemp:
