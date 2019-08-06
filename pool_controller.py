@@ -14,7 +14,7 @@ from itertools import combinations
 from random import shuffle, choice
 import serial
 
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +33,7 @@ class PentairCom(threading.Thread):
     ready = False
     Equip1 = 8
     Equip2 = 9
+    Equip3 = 10
     WaterTemp = 20
     AirTemp = 24
     Hour = 6
@@ -45,15 +46,25 @@ class PentairCom(threading.Thread):
 
     class Ctrl:
         """ Simple enum for device """
+        CLORINATOR = 0x02
         MAIN = 0x10
+        SECONDARY = 0x11
         REMOTE = 0x20
         PUMP1 = 0x60
+        PUMP2 = 0x61
+        PUMP3 = 0x62
+        PUMP4 = 0x63
         BROADCAST = 0x0f
 
     Controller = {
+        Ctrl.CLORINATOR: "Clorinator",
         Ctrl.MAIN: "Main",
+        Ctrl.SECONDARY: "Secondary",
         Ctrl.REMOTE: "Remote",
         Ctrl.PUMP1: "Pump1",
+        Ctrl.PUMP2: "Pump2",
+        Ctrl.PUMP3: "Pump3",
+        Ctrl.PUMP4: "Pump4",
         Ctrl.BROADCAST: "Broadcast"
     }
 
@@ -169,7 +180,7 @@ class PentairCom(threading.Thread):
         dst_controller = None
         while not done:
             packet = self.get_packet()
-            
+
             if len(packet) > 3:
                 dst = packet[2]
                 if dst in self.Controller:
@@ -181,41 +192,79 @@ class PentairCom(threading.Thread):
                     src_controller = self.Controller[src]
                 else:
                     src_controller = src
-                self.logger.debug("From: %s", src_controller)
-                self.logger.debug("To  : %s", dst_controller)
+                self.logger.debug("From: %s: %s", src_controller, src)
+                self.logger.debug("To  : %s, %s", dst_controller, dst)
                 self.logger.debug(packet)
+                if src_controller == "Clorinator":
+                    self.logger.debug("*DEBUG*** Found Clorinator src")
+
+                if dst_controller == "Clorinator":
+                    self.logger.debug("*DEBUG*** Found Clorinator dest")
 
                 if src_controller == "Pump1" and packet[4] == 0x07 and len(packet) == 21:
-                    self.status["pump_watts"] = (packet[9] << 8) + packet[10]
-                    self.status["pump_rpm"] = (packet[11] << 8) + packet[12]
-                    self.logger.info(self.status)
+                    self.status["Pump1_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["Pump1_rpm"] = (packet[11] << 8) + packet[12]
+
+                if src_controller == "Pump2" and packet[4] == 0x07 and len(packet) == 21:
+                    self.status["Pump2_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["Pump2_rpm"] = (packet[11] << 8) + packet[12]
+
+                if src_controller == "Pump3" and packet[4] == 0x07 and len(packet) == 21:
+                    self.status["Pump3_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["Pump3_rpm"] = (packet[11] << 8) + packet[12]
+
+                if src_controller == "Pump4" and packet[4] == 0x07 and len(packet) == 21:
+                    self.status["Pump4_watts"] = (packet[9] << 8) + packet[10]
+                    self.status["Pump4_rpm"] = (packet[11] << 8) + packet[12]
 
                 if len(packet) > 3 and (controller is None or packet[2] == self.Ctrl.BROADCAST):
                     done = True
 
         data_length = packet[5]
-        if data_length > 8:
+        # check to see if this is a status broadcase
+        if data_length > 8 and packet[4] == 0x02:
             equip1 = "{0:08b}".format(packet[self.Equip1])
             equip2 = "{0:08b}".format(packet[self.Equip2])
+            equip3 = "{0:08b}".format(packet[self.Equip3])
+            self.logger.debug("Equip1 : %s", list(equip1))
+            self.logger.debug("Equip2 : %s", list(equip2))
+            self.logger.debug("Equip3 : %s", list(equip3))
             self.status['last_update'] = datetime.datetime.now()
             self.status['source'] = src_controller
             self.status['destination'] = dst_controller
             self.status['time'] = "{0:02d}:{1:02d}".format(packet[6], packet[7])
             self.status['spillway'] = self.state[int(equip1[0:1])]
+            self.status['air_blower'] = self.state[int(equip1[1:2])]
             self.status['pool'] = self.state[int(equip1[2:3])]
-            self.status['spa'] = self.state[int(equip1[7:8])]
-            self.status['air_blower'] = self.state[int(equip1[5:6])]
-            self.status['pool_light'] = self.state[int(equip1[3:4])]
+            self.status['big_waterfall'] = self.state[int(equip1[3:4])]
             self.status['spa_light'] = self.state[int(equip1[4:5])]
-            self.status['cleaner'] = self.state[int(equip1[6:7])]
-            self.status['water_feature'] = self.state[int(equip1[1:2])]
-            self.status['aux'] = self.state[int(equip2[7:8])]
+            self.status['pool_light'] = self.state[int(equip1[5:6])]
+            self.status['filter_pump2'] = self.state[int(equip1[6:7])]
+            self.status['spa'] = self.state[int(equip1[7:8])]
+            self.status['unknown2_0'] = self.state[int(equip2[0:1])]
+            self.status['unknown2_1'] = self.state[int(equip2[1:2])]
+            self.status['unknown2_2'] = self.state[int(equip2[2:3])]
+            self.status['unknown2_3'] = self.state[int(equip2[3:4])]
+            self.status['neg_edge'] = self.state[int(equip2[4:5])]
+            self.status['edge_cleaner'] = self.state[int(equip2[5:6])]
+            self.status['unknown2_6'] = self.state[int(equip2[6:7])]
+            self.status['bar_feature'] = self.state[int(equip2[7:8])]
+            self.status['unknown3_0'] = self.state[int(equip2[0:1])]
+            self.status['unknown3_1'] = self.state[int(equip2[1:2])]
+            self.status['unknown3_2'] = self.state[int(equip2[2:3])]
+            self.status['unknown3_3'] = self.state[int(equip2[3:4])]
+            self.status['unknown3_4'] = self.state[int(equip2[4:5])]
+            self.status['unknown3_5'] = self.state[int(equip2[5:6])]
+            self.status['unknown3_6'] = self.state[int(equip2[6:7])]
+            self.status['unknown3_7'] = self.state[int(equip2[7:8])]
             if len(packet) >= self.WaterTemp:
                 self.status['water_temp'] = int(packet[self.WaterTemp])
             if len(packet) >= self.AirTemp:
                 self.status['air_temp'] = int(packet[self.AirTemp])
         if not self.ready:
             self.ready = True
+
+        self.logger.info(self.status)
         return self.status
 
     def run(self):
@@ -251,7 +300,7 @@ class MyTest(unittest.TestCase):
             PentairCom.Feature.SPILLWAY,
             PentairCom.Feature.AUX
         ]
-        pool = PentairCom('/dev/ttyUSB0')
+        pool = PentairCom('/dev/ttyS0')
         pool.start()
         feature_list = [x for x in combinations(feature_list, 4)]
         shuffle(feature_list)
