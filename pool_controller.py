@@ -13,10 +13,16 @@ import unittest
 from itertools import combinations
 from random import shuffle, choice
 import serial
+import paho.mqtt.publish as mqtt_publish
+import json
+import sys
+if sys.version_info[0] < 3:
+    raise Exception("Must be using Python 3 or greater")
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
+MQTT_Broker="192.168.100.8"
+MQTT_Status_Channel="house/pool/status"
 
 def bool_to_status(status):
     """
@@ -229,7 +235,7 @@ class PentairCom(threading.Thread):
             self.logger.debug("Equip1 : %s", list(equip1))
             self.logger.debug("Equip2 : %s", list(equip2))
             self.logger.debug("Equip3 : %s", list(equip3))
-            self.status['last_update'] = datetime.datetime.now()
+            self.status['last_update'] = str(datetime.datetime.now())
             self.status['source'] = src_controller
             self.status['destination'] = dst_controller
             self.status['time'] = "{0:02d}:{1:02d}".format(packet[6], packet[7])
@@ -263,6 +269,10 @@ class PentairCom(threading.Thread):
                 self.status['air_temp'] = int(packet[self.AirTemp])
         if not self.ready:
             self.ready = True
+        try:
+            mqtt_publish.single(MQTT_Status_Channel,json.dumps(self.status),hostname=MQTT_Broker)
+        except:
+            self.logger.error("MQTT Broker connection unavailable")
 
         self.logger.info(self.status)
         return self.status
