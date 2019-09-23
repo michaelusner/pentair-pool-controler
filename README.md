@@ -1,4 +1,4 @@
-# pool
+# Pentair Pool Controller
 Code for reading and controlling Pentair EasyTouch via RS485/RS232
 
 This utility is meant to be run as a service on a system utilizing a RS485 reader.
@@ -63,3 +63,14 @@ When you run the service, pool controller endpoints will be exposed:
     }
     
     The list of features can be found above in the /pool/status response.
+
+# Wiring
+You can tap into the RS485 BUS on the controller and wire as follows
+
+Controller ==> RS485/RS232 Converter ==> Raspberry Pi
+
+I used CAT5 to run the wires but you only need 2 for RS485.
+![Pool Controller Wiring](/images/controller_wiring.jpg?raw=true "Pool Controller Wiring")
+
+![RS485/RS232 converter wiring](/images/converter_wiring.jpg?raw=true "RS485/RS232 Converter Wiring")
+
